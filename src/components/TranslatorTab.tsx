@@ -4,8 +4,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Copy, ArrowRight, Upload, X, Trash2 } from "lucide-react";
+import { Copy, ArrowRight, Upload, X, Trash2, Languages, Sparkles } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { TranslationOutput } from "./TranslationOutput";
+import { 
+  extractStringsFromUnityFile, 
+  generateTxtOutput, 
+  generateCategorizedFiles, 
+  createZipFile, 
+  downloadFile 
+} from "@/utils/translationHelpers";
 
 interface FileInfo {
   name: string;
@@ -20,6 +30,14 @@ interface DuplicateGroup {
   selectedForDeletion: boolean[];
 }
 
+interface TranslationItem {
+  term: string;
+  english: string;
+  persian: string;
+  warnings: string[];
+  category?: string;
+}
+
 export const TranslatorTab = () => {
   const [inputText, setInputText] = useState("");
   const [outputText, setOutputText] = useState("");
@@ -28,6 +46,9 @@ export const TranslatorTab = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
   const [showDuplicates, setShowDuplicates] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [translations, setTranslations] = useState<TranslationItem[]>([]);
+  const [enableAiTranslation, setEnableAiTranslation] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const formatFileSize = (bytes: number): string => {
@@ -190,79 +211,114 @@ export const TranslatorTab = () => {
     toast.success(`${filesToDelete.size} فایل تکراری حذف شد`);
   };
 
-  const processText = () => {
+  const processText = async () => {
     if (!inputText.trim()) {
       toast.error("لطفاً خروجی Unity Asset را وارد کنید");
       return;
     }
 
-    const lines = inputText.split("\n");
-    const formatted: string[] = [];
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+    setIsTranslating(true);
+    setUploadProgress(0);
+
+    try {
+      // Extract strings from Unity file
+      const extracted = extractStringsFromUnityFile(inputText);
       
-      const itemMatch = line.match(/^\s*\[(\d+)\]\s*$/);
-      if (!itemMatch) continue;
-      
-      const itemNumber = itemMatch[1];
-      let termDataLine = "";
-      let termLine = "";
-      let dataLine = "";
-      
-      for (let j = i + 1; j < lines.length; j++) {
-        const currentLine = lines[j];
-        
-        if (j > i + 1 && currentLine.match(/^\s*\[\d+\]\s*$/)) {
-          const currentIndent = currentLine.search(/\S/);
-          const itemIndent = line.search(/\S/);
-          if (currentIndent <= itemIndent) {
-            break;
-          }
-        }
-        
-        if (!termDataLine && currentLine.match(/0\s+TermData\s+data\s*$/)) {
-          termDataLine = " 0 TermData data";
-        }
-        
-        if (!termLine) {
-          const termMatch = currentLine.match(/1\s+string\s+Term\s*=\s*"([^"]+)"/);
-          if (termMatch) {
-            termLine = `  1 string Term = "${termMatch[1]}"`;
-          }
-        }
-        
-        if (termDataLine && termLine && !dataLine) {
-          if (currentLine.match(/^\s*\[0\]\s*$/)) {
-            for (let k = j + 1; k < Math.min(j + 10, lines.length); k++) {
-              const dataMatch = lines[k].match(/1\s+string\s+data\s*=\s*"([^"]*)"/);
-              if (dataMatch) {
-                dataLine = `  1 string data = "${dataMatch[1]}"`;
-                break;
-              }
-            }
-            if (dataLine) break;
-          }
-        }
+      if (extracted.length === 0) {
+        toast.error("هیچ داده‌ای با فرمت مورد نظر پیدا نشد");
+        setIsTranslating(false);
+        return;
       }
-      
-      if (termDataLine && termLine && dataLine) {
-        formatted.push(`[${itemNumber}]`);
-        formatted.push("0 TermData data");
-        formatted.push(termLine.trim());
-        formatted.push("[0]");
-        formatted.push(dataLine.trim());
-        formatted.push("");
+
+      setUploadProgress(20);
+
+      if (enableAiTranslation) {
+        // Call AI translation edge function
+        toast.info(`در حال ترجمه ${extracted.length} رشته به فارسی...`);
+        
+        const { data, error } = await supabase.functions.invoke('translate-to-persian', {
+          body: { 
+            texts: extracted.map(e => e.data),
+            preservePlaceholders: true 
+          }
+        });
+
+        if (error) {
+          console.error("Translation error:", error);
+          throw new Error(error.message || "خطا در ترجمه");
+        }
+
+        setUploadProgress(80);
+
+        if (!data?.translations) {
+          throw new Error("خطا در دریافت ترجمه‌ها");
+        }
+
+        // Combine extraction with translations
+        const translationResults: TranslationItem[] = extracted.map((item, idx) => ({
+          term: item.term,
+          english: item.data,
+          persian: data.translations[idx]?.persian || item.data,
+          warnings: data.translations[idx]?.warnings || [],
+          category: item.category,
+        }));
+
+        setTranslations(translationResults);
+        
+        // Generate formatted output
+        const output = generateTxtOutput(translationResults);
+        setOutputText(output);
+        
+        setUploadProgress(100);
+        toast.success(`✨ ترجمه با موفقیت انجام شد - ${translationResults.length} مورد`);
+      } else {
+        // Just extract and format without translation
+        const formatted: string[] = [];
+        
+        extracted.forEach((item, idx) => {
+          formatted.push(`[${idx}]`);
+          formatted.push(`0 TermData data`);
+          formatted.push(`  1 string Term = "${item.term}"`);
+          formatted.push(`[0]`);
+          formatted.push(`  1 string data = "${item.data}"`);
+          formatted.push("");
+        });
+
+        const result = formatted.join("\n");
+        setOutputText(result);
+        toast.success(`متن استخراج شد - ${extracted.length} مورد`);
       }
+    } catch (error) {
+      console.error("Processing error:", error);
+      toast.error(error instanceof Error ? error.message : "خطا در پردازش");
+    } finally {
+      setIsTranslating(false);
+      setUploadProgress(0);
+    }
+  };
+
+  const handleDownload = async (format: 'txt' | 'zip') => {
+    if (translations.length === 0) {
+      toast.error("ابتدا متن را ترجمه کنید");
+      return;
     }
 
-    const result = formatted.join("\n");
-    setOutputText(result);
-    
-    if (result.trim()) {
-      toast.success(`متن با موفقیت فرمت شد - ${formatted.filter(l => l.startsWith('[')).length} مورد پیدا شد`);
-    } else {
-      toast.error("هیچ داده‌ای با فرمت مورد نظر پیدا نشد. لطفاً فرمت متن را بررسی کنید.");
+    try {
+      if (format === 'txt') {
+        const content = generateTxtOutput(translations);
+        const blob = new Blob([content], { type: 'text/plain; charset=utf-8' });
+        downloadFile(blob, 'translations.txt');
+        toast.success("فایل دانلود شد");
+      } else {
+        // Generate categorized files
+        const files = generateCategorizedFiles(translations);
+        const zipBlob = await createZipFile(files);
+        downloadFile(zipBlob, 'translations-categorized.txt');
+        toast.success("فایل‌های دسته‌بندی شده دانلود شد");
+      }
+    } catch (error) {
+      console.error("Download error:", error);
+      toast.error("خطا در دانلود فایل");
     }
   };
 
@@ -281,24 +337,52 @@ export const TranslatorTab = () => {
   };
 
   return (
-    <div className="grid md:grid-cols-2 gap-6 max-w-7xl mx-auto">
-      <Card className="p-6 backdrop-blur-sm bg-card/50 border-border/50 shadow-lg">
-        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
-          متن اصلی
-        </h2>
-        <div className="space-y-4">
-          {isUploading && (
-            <div className="space-y-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
-              <div className="flex justify-between text-sm font-medium">
-                <span className="text-primary">در حال آپلود فایل‌ها...</span>
-                <span className="text-primary">{Math.round(uploadProgress)}%</span>
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {translations.length > 0 ? (
+        <TranslationOutput translations={translations} onDownload={handleDownload} />
+      ) : (
+        <div className="grid md:grid-cols-2 gap-6">
+          <Card className="p-6 backdrop-blur-sm bg-card/50 border-border/50 shadow-lg">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+              متن اصلی
+            </h2>
+            <div className="space-y-4">
+              {(isUploading || isTranslating) && (
+              <div className="space-y-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                <div className="flex justify-between text-sm font-medium">
+                  <span className="text-primary">
+                    {isTranslating ? "در حال ترجمه..." : "در حال آپلود فایل‌ها..."}
+                  </span>
+                  <span className="text-primary">{Math.round(uploadProgress)}%</span>
+                </div>
+                <Progress value={uploadProgress} className="h-2" />
               </div>
-              <Progress value={uploadProgress} className="h-2" />
-            </div>
-          )}
-          
-          {uploadedFiles.length > 0 && (
+            )}
+            
+            {/* AI Translation Toggle */}
+            <Card className="p-4 bg-accent/5 border-accent/20">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-accent" />
+                  <div>
+                    <Label htmlFor="ai-toggle" className="text-sm font-semibold cursor-pointer">
+                      ترجمه هوشمند به فارسی
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      استفاده از هوش مصنوعی برای ترجمه طبیعی و بازی‌محور
+                    </p>
+                  </div>
+                </div>
+                <Checkbox
+                  id="ai-toggle"
+                  checked={enableAiTranslation}
+                  onCheckedChange={(checked) => setEnableAiTranslation(checked as boolean)}
+                />
+              </div>
+            </Card>
+
+            {uploadedFiles.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium">فایل‌های آپلود شده:</h3>
@@ -382,69 +466,74 @@ export const TranslatorTab = () => {
             </Card>
           )}
           
-          <Textarea
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="خروجی Unity Asset Dump (فایل I2Languages) را اینجا وارد کنید یا فایل TEXT آپلود کنید..."
-            className="min-h-[300px] font-mono text-sm resize-none bg-background/50 border-border/50 focus:border-primary/50 transition-colors"
-            dir="auto"
-          />
-          <div className="grid grid-cols-2 gap-3">
+            <Textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="خروجی Unity Asset Dump (فایل I2Languages) را اینجا وارد کنید یا فایل TEXT آپلود کنید..."
+              className="min-h-[300px] font-mono text-sm resize-none bg-background/50 border-border/50 focus:border-primary/50 transition-colors"
+              dir="auto"
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                variant="outline"
+                size="lg"
+                className="w-full"
+                disabled={isUploading || isTranslating}
+              >
+                <Upload className="ml-2 h-5 w-5" />
+                <span>{isUploading ? "در حال آپلود..." : "آپلود فایل TEXT"}</span>
+              </Button>
+              <Button
+                onClick={processText}
+                className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90 transition-opacity"
+                size="lg"
+                disabled={isTranslating}
+              >
+                {enableAiTranslation && <Languages className="ml-2 h-5 w-5" />}
+                <span>{isTranslating ? "در حال ترجمه..." : enableAiTranslation ? "ترجمه هوشمند" : "استخراج متن"}</span>
+                {!isTranslating && <ArrowRight className="mr-2 h-5 w-5" />}
+              </Button>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".txt"
+              multiple
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+          </div>
+        </Card>
+
+        <Card className="p-6 backdrop-blur-sm bg-card/50 border-border/50 shadow-lg">
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-accent animate-pulse"></span>
+            خروجی فرمت شده
+          </h2>
+          <div className="space-y-4">
+            <Textarea
+              value={outputText}
+              onChange={(e) => setOutputText(e.target.value)}
+              placeholder="نتیجه فرمت شده اینجا نمایش داده می‌شود..."
+              className="min-h-[300px] font-mono text-sm resize-none bg-background/50 border-border/50"
+              dir="auto"
+            />
             <Button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={copyToClipboard}
               variant="outline"
               size="lg"
               className="w-full"
-              disabled={isUploading}
+              disabled={!outputText}
             >
-              <Upload className="ml-2 h-5 w-5" />
-              <span>{isUploading ? "در حال آپلود..." : "آپلود فایل TEXT"}</span>
-            </Button>
-            <Button
-              onClick={processText}
-              className="w-full bg-gradient-to-r from-primary to-accent hover:opacity-90 transition-opacity"
-              size="lg"
-            >
-              <span>پردازش متن</span>
-              <ArrowRight className="mr-2 h-5 w-5" />
+              <Copy className="ml-2 h-5 w-5" />
+              کپی کردن
             </Button>
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".txt"
-            multiple
-            onChange={handleFileUpload}
-            className="hidden"
-          />
-        </div>
-      </Card>
+        </Card>
+      </div>
+      )}
 
-      <Card className="p-6 backdrop-blur-sm bg-card/50 border-border/50 shadow-lg">
-        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-accent animate-pulse"></span>
-          خروجی فرمت شده
-        </h2>
-        <div className="space-y-4">
-          <Textarea
-            value={outputText}
-            onChange={(e) => setOutputText(e.target.value)}
-            placeholder="نتیجه فرمت شده اینجا نمایش داده می‌شود..."
-            className="min-h-[300px] font-mono text-sm resize-none bg-background/50 border-border/50"
-            dir="auto"
-          />
-          <Button
-            onClick={copyToClipboard}
-            variant="outline"
-            size="lg"
-            className="w-full"
-            disabled={!outputText}
-          >
-            <Copy className="ml-2 h-5 w-5" />
-            کپی کردن
-          </Button>
-        </div>
-      </Card>
     </div>
   );
 };
