@@ -31,8 +31,8 @@ export const extractStringsFromUnityFile = (content: string): ExtractedString[] 
         if (currentIndent <= itemIndent) break;
       }
 
-      // Extract Term
-      const termMatch = currentLine.match(/1\s+string\s+Term\s*=\s*"([^"]+)"/);
+      // Extract Term (handles both full and simplified formats)
+      const termMatch = currentLine.match(/(?:1\s+)?string\s+Term\s*=\s*"([^"]+)"/);
       if (termMatch) {
         term = termMatch[1];
         
@@ -51,10 +51,18 @@ export const extractStringsFromUnityFile = (content: string): ExtractedString[] 
         }
       }
 
-      // Extract data (English string)
+      // Extract data (English string) - handles both formats
+      // Format 1: Simplified format (direct data line after Term)
+      const directDataMatch = currentLine.match(/(?:1\s+)?string\s+data\s*=\s*"([^"]*)"/);
+      if (directDataMatch && term) {
+        data = directDataMatch[1];
+        break;
+      }
+
+      // Format 2: Full format (nested under [0])
       if (term && currentLine.match(/^\s*\[0\]\s*$/)) {
         for (let k = j + 1; k < Math.min(j + 10, lines.length); k++) {
-          const dataMatch = lines[k].match(/1\s+string\s+data\s*=\s*"([^"]*)"/);
+          const dataMatch = lines[k].match(/(?:1\s+)?string\s+data\s*=\s*"([^"]*)"/);
           if (dataMatch) {
             data = dataMatch[1];
             break;
