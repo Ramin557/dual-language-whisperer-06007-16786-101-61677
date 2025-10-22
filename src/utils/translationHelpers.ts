@@ -85,34 +85,35 @@ export const extractStringsFromUnityFile = (content: string): ExtractedString[] 
   return extracted;
 };
 
+export const reversePersianText = (text: string): string => {
+  return text.split('').reverse().join('');
+};
+
 export const generateTxtOutput = (
-  translations: Array<{ term: string; english: string; persian: string; category?: string }>
+  translations: Array<{ term: string; english: string; persian: string; category?: string }>,
+  reverseText: boolean = false
 ): string => {
   const lines: string[] = [];
   
-  lines.push("=".repeat(60));
-  lines.push("Unity I2Localization - English to Persian Translation");
-  lines.push(`Generated: ${new Date().toLocaleString('fa-IR')}`);
-  lines.push(`Total Translations: ${translations.length}`);
-  lines.push("=".repeat(60));
-  lines.push("");
-
   translations.forEach((item, idx) => {
+    const persianText = reverseText ? reversePersianText(item.persian) : item.persian;
+    
     lines.push(`[${idx}]`);
-    lines.push(`Term: ${item.term}`);
-    if (item.category) {
-      lines.push(`Category: ${item.category}`);
-    }
-    lines.push(`English: ${item.english}`);
-    lines.push(`Persian: ${item.persian}`);
+    lines.push(`0 TermData data`);
+    lines.push(`1 string Term = "${item.term}"`);
+    lines.push(`[0]`);
+    lines.push(`1 string data = "${persianText}"`);
+    lines.push(`EN: ${item.english}`);
     lines.push("");
   });
 
   return lines.join("\n");
 };
 
+
 export const generateCategorizedFiles = (
-  translations: Array<{ term: string; english: string; persian: string; category?: string }>
+  translations: Array<{ term: string; english: string; persian: string; category?: string }>,
+  reverseText: boolean = false
 ): Record<string, string> => {
   const categories = translations.reduce((acc, item) => {
     const cat = item.category || 'Misc';
@@ -125,16 +126,16 @@ export const generateCategorizedFiles = (
 
   Object.entries(categories).forEach(([category, items]) => {
     const lines: string[] = [];
-    lines.push(`Category: ${category}`);
-    lines.push(`Count: ${items.length}`);
-    lines.push("=".repeat(60));
-    lines.push("");
 
     items.forEach((item, idx) => {
+      const persianText = reverseText ? reversePersianText(item.persian) : item.persian;
+      
       lines.push(`[${idx}]`);
-      lines.push(`Term: ${item.term}`);
-      lines.push(`English: ${item.english}`);
-      lines.push(`Persian: ${item.persian}`);
+      lines.push(`0 TermData data`);
+      lines.push(`1 string Term = "${item.term}"`);
+      lines.push(`[0]`);
+      lines.push(`1 string data = "${persianText}"`);
+      lines.push(`EN: ${item.english}`);
       lines.push("");
     });
 

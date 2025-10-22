@@ -49,6 +49,7 @@ export const TranslatorTab = () => {
   const [isTranslating, setIsTranslating] = useState(false);
   const [translations, setTranslations] = useState<TranslationItem[]>([]);
   const [enableAiTranslation, setEnableAiTranslation] = useState(true);
+  const [reverseText, setReverseText] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const formatFileSize = (bytes: number): string => {
@@ -266,7 +267,7 @@ export const TranslatorTab = () => {
         setTranslations(translationResults);
         
         // Generate formatted output
-        const output = generateTxtOutput(translationResults);
+        const output = generateTxtOutput(translationResults, reverseText);
         setOutputText(output);
         
         setUploadProgress(100);
@@ -305,13 +306,13 @@ export const TranslatorTab = () => {
 
     try {
       if (format === 'txt') {
-        const content = generateTxtOutput(translations);
+        const content = generateTxtOutput(translations, reverseText);
         const blob = new Blob([content], { type: 'text/plain; charset=utf-8' });
         downloadFile(blob, 'translations.txt');
         toast.success("فایل دانلود شد");
       } else {
         // Generate categorized files
-        const files = generateCategorizedFiles(translations);
+        const files = generateCategorizedFiles(translations, reverseText);
         const zipBlob = await createZipFile(files);
         downloadFile(zipBlob, 'translations-categorized.txt');
         toast.success("فایل‌های دسته‌بندی شده دانلود شد");
@@ -361,7 +362,7 @@ export const TranslatorTab = () => {
             )}
             
             {/* AI Translation Toggle */}
-            <Card className="p-4 bg-accent/5 border-accent/20">
+            <Card className="p-4 bg-accent/5 border-accent/20 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5 text-accent" />
@@ -378,6 +379,24 @@ export const TranslatorTab = () => {
                   id="ai-toggle"
                   checked={enableAiTranslation}
                   onCheckedChange={(checked) => setEnableAiTranslation(checked as boolean)}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                <div className="flex items-center gap-2">
+                  <div>
+                    <Label htmlFor="reverse-toggle" className="text-sm font-semibold cursor-pointer">
+                      برعکس کردن متن فارسی
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      برای فایل‌های Unity که نیاز به متن RTL معکوس دارند
+                    </p>
+                  </div>
+                </div>
+                <Checkbox
+                  id="reverse-toggle"
+                  checked={reverseText}
+                  onCheckedChange={(checked) => setReverseText(checked as boolean)}
                 />
               </div>
             </Card>
