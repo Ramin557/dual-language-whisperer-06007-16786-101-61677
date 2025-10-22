@@ -21,17 +21,10 @@ export const extractStringsFromUnityFile = (content: string): ExtractedString[] 
     let category = "";
 
     // Scan forward to find Term and data
-    for (let j = i + 1; j < Math.min(i + 30, lines.length); j++) {
+    for (let j = i + 1; j < Math.min(i + 50, lines.length); j++) {
       const currentLine = lines[j];
       
-      // Stop at next item
-      if (j > i + 1 && currentLine.match(/^\s*\[\d+\]\s*$/)) {
-        const currentIndent = currentLine.search(/\S/);
-        const itemIndent = line.search(/\S/);
-        if (currentIndent <= itemIndent) break;
-      }
-
-      // Extract Term (handles both full and simplified formats)
+      // Extract Term first
       const termMatch = currentLine.match(/(?:1\s+)?string\s+Term\s*=\s*"([^"]+)"/);
       if (termMatch) {
         term = termMatch[1];
@@ -51,24 +44,40 @@ export const extractStringsFromUnityFile = (content: string): ExtractedString[] 
         }
       }
 
-      // Extract data (English string) - handles both formats
-      // Format 1: Simplified format (direct data line after Term)
-      const directDataMatch = currentLine.match(/(?:1\s+)?string\s+data\s*=\s*"([^"]*)"/);
-      if (directDataMatch && term) {
-        data = directDataMatch[1];
-        break;
+      // Once we have term, look for data in any of these patterns:
+      if (term) {
+        // Pattern 1: Direct data line (same level or any level)
+        const directDataMatch = currentLine.match(/(?:1\s+)?string\s+data\s*=\s*"([^"]*)"/);
+        if (directDataMatch) {
+          data = directDataMatch[1];
+          break;
+        }
+
+        // Pattern 2: Check if this line has [0] or [any number], then look inside for data
+        const nestedMatch = currentLine.match(/^\s*\[\d+\]\s*$/);
+        if (nestedMatch) {
+          for (let k = j + 1; k < Math.min(j + 10, lines.length); k++) {
+            const dataMatch = lines[k].match(/(?:1\s+)?string\s+data\s*=\s*"([^"]*)"/);
+            if (dataMatch) {
+              data = dataMatch[1];
+              break;
+            }
+            // Stop if we hit another bracketed section at same or lower indent
+            if (lines[k].match(/^\s*\[\d+\]\s*$/)) {
+              const nestedIndent = lines[k].search(/\S/);
+              const currentIndent = currentLine.search(/\S/);
+              if (nestedIndent <= currentIndent) break;
+            }
+          }
+          if (data) break;
+        }
       }
 
-      // Format 2: Full format (nested under [0])
-      if (term && currentLine.match(/^\s*\[0\]\s*$/)) {
-        for (let k = j + 1; k < Math.min(j + 10, lines.length); k++) {
-          const dataMatch = lines[k].match(/(?:1\s+)?string\s+data\s*=\s*"([^"]*)"/);
-          if (dataMatch) {
-            data = dataMatch[1];
-            break;
-          }
-        }
-        if (data) break;
+      // Stop scanning if we hit the next main item (only if we haven't found term yet or already found both)
+      if (currentLine.match(/^\s*\[\d+\]\s*$/) && j > i + 1) {
+        const currentIndent = currentLine.search(/\S/);
+        const itemIndent = line.search(/\S/);
+        if (currentIndent <= itemIndent && (!term || data)) break;
       }
     }
 
