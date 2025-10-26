@@ -75,12 +75,12 @@ export function extractTermsChunked(
 }
 
 /**
- * Apply RTL formatting - Simple segment-based reversal
+ * Apply RTL formatting - Enhanced for Unity with BiDi markers
  */
 export function applyRTLFormatting(text: string): string {
     if (!text) return text;
 
-    // Normalize Arabic characters to Persian
+    // مرحله ۱: نرمال‌سازی حروف عربی به فارسی
     let normalized = text
         .replace(/ك/g, 'ک')
         .replace(/ي/g, 'ی')
@@ -89,7 +89,7 @@ export function applyRTLFormatting(text: string): string {
         .replace(/إ/g, 'ا')
         .replace(/ؤ/g, 'و');
 
-    // Split into RTL and LTR segments
+    // مرحله ۲: تقسیم متن به بخش‌های RTL و LTR
     const segments: Array<{ text: string; isRTL: boolean }> = [];
     let currentText = '';
     let isRTL = false;
@@ -111,15 +111,131 @@ export function applyRTLFormatting(text: string): string {
         segments.push({ text: currentText, isRTL });
     }
 
-    // Reverse RTL segments for Unity rendering
+    // مرحله ۳: معکوس کردن بخش‌های RTL و ترکیب نهایی
     const result = segments.map(segment => {
         if (segment.isRTL) {
+            // معکوس کردن بخش RTL
             return [...segment.text].reverse().join('');
         }
         return segment.text;
     }).join('');
 
-    return result;
+    // مرحله ۴: اضافه کردن کاراکترهای BiDi برای نمایش صحیح در یونیتی
+    return '\u202B' + result + '\u202C';
+}
+
+/**
+ * Extract strings from Unity file - supports multiple formats
+ */
+export function extractStringsFromUnityFile(content: string): Array<{ term: string; data: string; category?: string }> {
+    const lines = content.split(/\r?\n/);
+    const results: Array<{ term: string; data: string; category?: string }> = [];
+    
+    let currentTerm: string | null = null;
+    let lookingForData = false;
+    let scanRange = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Look for Term
+        const termMatch = line.match(/string Term = "([^"]+)"/);
+        if (termMatch) {
+            currentTerm = termMatch[1];
+            lookingForData = true;
+            scanRange = 0;
+            continue;
+        }
+        
+        // If we have a term, look for data within next 20 lines
+        if (currentTerm && lookingForData && scanRange < 20) {
+            const dataMatch = line.match(/string data = "([^"]*)"/);
+            if (dataMatch) {
+                const category = currentTerm.includes('/') ? currentTerm.split('/')[0] : undefined;
+                results.push({
+                    term: currentTerm,
+                    data: dataMatch[1],
+                    category
+                });
+                currentTerm = null;
+                lookingForData = false;
+                scanRange = 0;
+            } else {
+                scanRange++;
+            }
+        }
+    }
+    
+    return results;
+}
+
+/**
+ * Generate TXT output with Unity format
+ */
+export function generateTxtOutput(
+    translations: Array<{ term: string; english: string; persian: string }>,
+    reverseText: boolean = false
+): string {
+    const lines: string[] = [];
+    
+    translations.forEach((item, idx) => {
+        const persianText = reverseText ? applyRTLFormatting(item.persian) : item.persian;
+        
+        lines.push(`[${idx}]`);
+        lines.push(`0 TermData data`);
+        lines.push(`  1 string Term = "${item.term}"`);
+        lines.push(`[0]`);
+        lines.push(`  1 string data = "${persianText}"`);
+        lines.push(`EN: ${item.english}`);
+        lines.push('');
+    });
+    
+    return lines.join('\n');
+}
+
+/**
+ * Generate categorized files by category
+ */
+export function generateCategorizedFiles(
+    translations: Array<{ term: string; english: string; persian: string; category?: string }>,
+    reverseText: boolean = false
+): Map<string, string> {
+    const fileMap = new Map<string, string>();
+    const categorized = new Map<string, typeof translations>();
+    
+    // Group by category
+    translations.forEach(item => {
+        const cat = item.category || 'general';
+        if (!categorized.has(cat)) {
+            categorized.set(cat, []);
+        }
+        categorized.get(cat)!.push(item);
+    });
+    
+    // Generate content for each category
+    categorized.forEach((items, category) => {
+        const content = generateTxtOutput(items, reverseText);
+        fileMap.set(`${category}.txt`, content);
+    });
+    
+    return fileMap;
+}
+
+/**
+ * Create a simple ZIP-like file (concatenated files with headers)
+ */
+export function createZipFile(files: Map<string, string>): Promise<Blob> {
+    return new Promise((resolve) => {
+        const parts: string[] = [];
+        
+        files.forEach((content, filename) => {
+            parts.push(`\n========== ${filename} ==========\n`);
+            parts.push(content);
+        });
+        
+        const blob = new Blob([parts.join('\n')], { type: 'text/plain;charset=utf-8' });
+        resolve(blob);
+    });
 }
 
 /**
@@ -277,10 +393,10 @@ export function generateOutputFileName(originalName: string, suffix: string): st
 }
 
 /**
- * Safe file download
+ * Safe file download - accepts both string and Blob
  */
-export function downloadFile(data: string, filename: string): void {
-  const blob = new Blob([data], { type: 'text/plain;charset=utf-8' });
+export function downloadFile(data: string | Blob, filename: string): void {
+  const blob = data instanceof Blob ? data : new Blob([data], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   
   try {
