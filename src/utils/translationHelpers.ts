@@ -80,6 +80,43 @@ export function extractTermsChunked(
 export function applyRTLFormatting(text: string): string {
     if (!text) return text;
 
+    // نقشه تبدیل حروف فارسی به Presentation Forms برای Unity
+    const presentationMap: Record<string, string> = {
+      'آ': 'ﺁ',
+      'ا': 'ﺎ',
+      'ب': 'ﺐ',
+      'پ': 'ﭗ',
+      'ت': 'ﺖ',
+      'ث': 'ﺚ',
+      'ج': 'ﺞ',
+      'چ': 'ﭻ',
+      'ح': 'ﺢ',
+      'خ': 'ﺧ',
+      'د': 'ﺩ',
+      'ذ': 'ﺫ',
+      'ر': 'ﺭ',
+      'ز': 'ﺯ',
+      'ژ': 'ﮊ',
+      'س': 'ﺲ',
+      'ش': 'ﺶ',
+      'ص': 'ﺺ',
+      'ض': 'ﺾ',
+      'ط': 'ﻂ',
+      'ظ': 'ﻆ',
+      'ع': 'ﻊ',
+      'غ': 'ﻎ',
+      'ف': 'ﻒ',
+      'ق': 'ﻖ',
+      'ک': 'ﻚ',
+      'گ': 'ﮒ',
+      'ل': 'ﻞ',
+      'م': 'ﻤ',
+      'ن': 'ﻦ',
+      'و': 'ﻭ',
+      'ه': 'ﻩ',
+      'ی': 'ﯿ'
+    };
+
     // مرحله ۱: نرمال‌سازی حروف عربی به فارسی
     let normalized = text
         .replace(/ك/g, 'ک')
@@ -111,11 +148,12 @@ export function applyRTLFormatting(text: string): string {
         segments.push({ text: currentText, isRTL });
     }
 
-    // مرحله ۳: معکوس کردن بخش‌های RTL و ترکیب نهایی
+    // مرحله ۳: معکوس کردن بخش‌های RTL و تبدیل به Presentation Forms
     const result = segments.map(segment => {
         if (segment.isRTL) {
-            // معکوس کردن بخش RTL
-            return [...segment.text].reverse().join('');
+            // معکوس کردن و تبدیل به Presentation Forms
+            const reversed = [...segment.text].reverse();
+            return reversed.map(ch => presentationMap[ch] || ch).join('');
         }
         return segment.text;
     }).join('');
