@@ -92,7 +92,7 @@ export function applyRTLFormatting(text: string): string {
 
   /* ۲) نقشهٔ حروف به Presentation Forms */
   const presentationMap: Record<string, string> = {
-    آ: 'ﺏ', ا: 'ﺎ', ب: 'ﺐ', پ: 'ﭗ', ت: 'ﺖ', ث: 'ﺚ',
+    آ: 'ﺁ', ا: 'ﺎ', ب: 'ﺐ', پ: 'ﭗ', ت: 'ﺖ', ث: 'ﺚ',
     ج: 'ﺞ', چ: 'ﭻ', ح: 'ﺢ', خ: 'ﺧ', د: 'ﺩ', ذ: 'ﺫ',
     ر: 'ﺭ', ز: 'ﺯ', ژ: 'ﮊ', س: 'ﺲ', ش: 'ﺶ', ص: 'ﺺ',
     ض: 'ﺾ', ط: 'ﻂ', ظ: 'ﻆ', ع: 'ﻊ', غ: 'ﻎ', ف: 'ﻒ',
@@ -111,8 +111,8 @@ export function applyRTLFormatting(text: string): string {
   /* ۴) تبدیل هر حرف به شکل خاص */
   const converted = reversed.map(ch => presentationMap[ch] || ch).join('');
 
-  /* ۵) BiDi markers برای یونیتی */
-  return `\u202B${converted}\u202C`;
+  /* ۵) بدون BiDi markers برای سازگاری بهتر با Unity */
+  return converted;
 }
 
 /**
