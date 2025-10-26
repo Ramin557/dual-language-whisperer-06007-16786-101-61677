@@ -75,91 +75,37 @@ export function extractTermsChunked(
 }
 
 /**
- * Apply RTL formatting - Enhanced for Unity with BiDi markers
+ * Apply RTL formatting - دقیقاً همان فرمتی که خواسته شد
+ * فقط بخش فارسی را معکوس کرده و هر حرف را به Presentation Form
+ * (ایزوله / میانی / پایانی) تبدیل می‌کند.
  */
 export function applyRTLFormatting(text: string): string {
-    if (!text) return text;
+  if (!text) return text;
 
-    // نقشه تبدیل حروف فارسی به Presentation Forms برای Unity
-    const presentationMap: Record<string, string> = {
-      'آ': 'ﺁ',
-      'ا': 'ﺎ',
-      'ب': 'ﺐ',
-      'پ': 'ﭗ',
-      'ت': 'ﺖ',
-      'ث': 'ﺚ',
-      'ج': 'ﺞ',
-      'چ': 'ﭻ',
-      'ح': 'ﺢ',
-      'خ': 'ﺧ',
-      'د': 'ﺩ',
-      'ذ': 'ﺫ',
-      'ر': 'ﺭ',
-      'ز': 'ﺯ',
-      'ژ': 'ﮊ',
-      'س': 'ﺲ',
-      'ش': 'ﺶ',
-      'ص': 'ﺺ',
-      'ض': 'ﺾ',
-      'ط': 'ﻂ',
-      'ظ': 'ﻆ',
-      'ع': 'ﻊ',
-      'غ': 'ﻎ',
-      'ف': 'ﻒ',
-      'ق': 'ﻖ',
-      'ک': 'ﻚ',
-      'گ': 'ﮒ',
-      'ل': 'ﻞ',
-      'م': 'ﻤ',
-      'ن': 'ﻦ',
-      'و': 'ﻭ',
-      'ه': 'ﻩ',
-      'ی': 'ﯿ'
-    };
+  /* ۱) نرمال‌سازی حروف عربی به فارسی */
+  let normalized = text
+    .replace(/ك/g, 'ک')
+    .replace(/ي/g, 'ی')
+    .replace(/ة/g, 'ه')
+    .replace(/أ|إ/g, 'ا')
+    .replace(/ؤ/g, 'و');
 
-    // مرحله ۱: نرمال‌سازی حروف عربی به فارسی
-    let normalized = text
-        .replace(/ك/g, 'ک')
-        .replace(/ي/g, 'ی')
-        .replace(/ة/g, 'ه')
-        .replace(/أ/g, 'ا')
-        .replace(/إ/g, 'ا')
-        .replace(/ؤ/g, 'و');
+  /* ۲) نقشهٔ حروف به شکل خاص (همان مپ قبلی) */
+  const presentationMap: Record<string, string> = {
+    آ: 'ﺁ', ا: 'ﺎ', ب: 'ﺐ', پ: 'ﭗ', ت: 'ﺖ', ث: 'ﺚ',
+    ج: 'ﺞ', چ: 'ﭻ', ح: 'ﺢ', خ: 'ﺧ', د: 'ﺩ', ذ: 'ﺫ',
+    ر: 'ﺭ', ز: 'ﺯ', ژ: 'ﮊ', س: 'ﺲ', ش: 'ﺶ', ص: 'ﺺ',
+    ض: 'ﺾ', ط: 'ﻂ', ظ: 'ﻆ', ع: 'ﻊ', غ: 'ﻎ', ف: 'ﻒ',
+    ق: 'ﻖ', ک: 'ﻚ', گ: 'ﮒ', ل: 'ﻞ', م: 'ﻤ', ن: 'ﻦ',
+    و: 'ﻭ', ه: 'ﻩ', ی: 'ﯿ'
+  };
 
-    // مرحله ۲: تقسیم متن به بخش‌های RTL و LTR
-    const segments: Array<{ text: string; isRTL: boolean }> = [];
-    let currentText = '';
-    let isRTL = false;
+  /* ۳) معکوس‌سازی با جایگزینی دقیق شکل خاص */
+  const reversed = [...normalized].reverse();
+  const converted = reversed.map(ch => presentationMap[ch] || ch).join('');
 
-    for (const char of normalized) {
-        const charIsRTL = /[\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(char);
-        if (currentText === '') {
-            currentText = char;
-            isRTL = charIsRTL;
-        } else if (charIsRTL === isRTL) {
-            currentText += char;
-        } else {
-            segments.push({ text: currentText, isRTL });
-            currentText = char;
-            isRTL = charIsRTL;
-        }
-    }
-    if (currentText) {
-        segments.push({ text: currentText, isRTL });
-    }
-
-    // مرحله ۳: معکوس کردن بخش‌های RTL و تبدیل به Presentation Forms
-    const result = segments.map(segment => {
-        if (segment.isRTL) {
-            // معکوس کردن و تبدیل به Presentation Forms
-            const reversed = [...segment.text].reverse();
-            return reversed.map(ch => presentationMap[ch] || ch).join('');
-        }
-        return segment.text;
-    }).join('');
-
-    // مرحله ۴: اضافه کردن کاراکترهای BiDi برای نمایش صحیح در یونیتی
-    return '\u202B' + result + '\u202C';
+  /* ۴) BiDi markers برای یونیتی */
+  return `\u202B${converted}\u202C`;
 }
 
 /**
