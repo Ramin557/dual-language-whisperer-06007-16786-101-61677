@@ -88,7 +88,8 @@ export function applyRTLFormatting(text: string): string {
     .replace(/ي/g, 'ی')
     .replace(/ة/g, 'ه')
     .replace(/أ|إ/g, 'ا')
-    .replace(/ؤ/g, 'و');
+    .replace(/ؤ/g, 'و')
+    .replace(/\u200C/g, ''); // حذف نیم‌فاصله
 
   /* ۲) نقشهٔ حروف به Presentation Forms */
   const presentationMap: Record<string, string> = {
@@ -116,8 +117,8 @@ export function applyRTLFormatting(text: string): string {
   /* ۴) تبدیل هر حرف به شکل خاص */
   const converted = reversed.map(ch => presentationMap[ch] || ch).join('');
 
-  /* ۵) بدون BiDi markers برای سازگاری بهتر با Unity */
-  return converted;
+  /* ۵) اضافه کردن RTL Override برای جلوگیری از جابه‌جایی علامت‌ها */
+  return '\u202E' + converted;
 }
 
 /**
